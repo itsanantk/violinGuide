@@ -1,0 +1,11 @@
+{
+  "name": "violin-guide",
+  "version": "1.0.0",
+  "description": "An interactive violin learning guide and practice assistant that listens.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node test/pitch.test.mjs",
+    "start": "python -m http.server 8080"
+  }
+}

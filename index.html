@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Violin Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Karla:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎻</text></svg>">
+</head>
+<body>
+
+<a class="skip-link" href="#view">Skip to content</a>
+
+<div class="shell">
+
+  <header class="masthead">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 40" width="20" height="34">
+          <path d="M12 2c-3 0-4 2-4 4s1 3 1 5-4 3-4 9c0 7 4 18 7 18s7-11 7-18c0-6-4-7-4-9s1-3 1-5-1-4-4-4z"
+                fill="none" stroke="currentColor" stroke-width="1.4"/>
+          <line x1="10" y1="12" x2="10" y2="34" stroke="currentColor" stroke-width="0.6"/>
+          <line x1="14" y1="12" x2="14" y2="34" stroke="currentColor" stroke-width="0.6"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <strong>Violin Guide</strong>
+        <em id="brand-sub">practice, listened to</em>
+      </span>
+    </div>
+
+    <button id="enable-audio" class="enable-audio" type="button">
+      <span class="enable-dot" aria-hidden="true"></span>
+      <span class="enable-label">Enable sound &amp; mic</span>
+    </button>
+  </header>
+
+  <nav class="rail" aria-label="Sections">
+    <a href="#/" data-route="/">Today</a>
+    <a href="#/learn" data-route="/learn">Learn</a>
+    <a href="#/songs" data-route="/songs">Songs</a>
+    <a href="#/tuner" data-route="/tuner">Tuner</a>
+    <a href="#/trainer" data-route="/trainer">Trainer</a>
+    <a href="#/fingering" data-route="/fingering">Fingerboard</a>
+    <a href="#/tips" data-route="/tips">Tips</a>
+  </nav>
+
+  <main id="view" class="view" tabindex="-1">
+    <p class="loading">Loading…</p>
+  </main>
+
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
