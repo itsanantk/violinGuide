@@ -129,7 +129,13 @@ export function parseMidi(buffer) {
  * Overlapping notes are reduced to the highest sounding pitch, and gaps become
  * rests, so a piano-style track still yields a playable single line.
  */
-export function trackToNotes(track, ticksPerBeat, { quantiseTo = 0.25 } = {}) {
+export function trackToNotes(track, ticksPerBeat, {
+  quantiseTo = 0.25,
+  // Cap on how many notes legato detection will put under one bow. A long
+  // legato passage is real, but slurring twenty notes into a single stroke is
+  // not playable — past this the bow has to change somewhere.
+  maxSlur = 6,
+} = {}) {
   const sounding = new Map(); // note -> startTick
   const segments = [];        // {startTick, endTick, note}
 
@@ -149,34 +155,90 @@ export function trackToNotes(track, ticksPerBeat, { quantiseTo = 0.25 } = {}) {
   segments.sort((a, b) => a.startTick - b.startTick || b.note - a.note);
 
   // Walk forward, keeping the top voice and never letting notes overlap.
+  // `soundedUntil` remembers where a note originally stopped, before trimming,
+  // because that overlap is the only trace of legato a MIDI file carries.
+  //
+  // Two very different things look like "overlap" here, and telling them apart
+  // matters: notes struck together are a chord, where only the top line should
+  // survive; a note that starts late but before the previous one releases is
+  // legato melody, where BOTH notes belong. Treating legato as a chord silently
+  // deletes every descending note in a slow melody.
+  const chordWindow = ticksPerBeat * 0.1;
+
   const line = [];
   for (const segment of segments) {
     const previous = line.at(-1);
-    if (!previous) { line.push({ ...segment }); continue; }
+    if (!previous) { line.push({ ...segment, soundedUntil: segment.endTick }); continue; }
 
     if (segment.startTick < previous.endTick) {
-      // Overlaps: keep whichever is higher, and trim the loser.
-      if (segment.note > previous.note) {
-        previous.endTick = segment.startTick;
-        if (previous.endTick <= previous.startTick) line.pop();
-        line.push({ ...segment });
+      if (segment.startTick - previous.startTick < chordWindow) {
+        // Struck together — a chord. Keep whichever is higher.
+        if (segment.note > previous.note) {
+          line.pop();
+          line.push({ ...segment, soundedUntil: segment.endTick });
+        }
+        continue;
       }
-      // Lower note inside a higher one: drop it.
+      // Legato: the next melody note, overlapping the tail of this one.
+      previous.endTick = segment.startTick;
+      if (previous.endTick <= previous.startTick) line.pop();
+      line.push({ ...segment, soundedUntil: segment.endTick });
       continue;
     }
-    line.push({ ...segment });
+    line.push({ ...segment, soundedUntil: segment.endTick });
   }
+
+  // A note that starts before the previous one has finished sounding was played
+  // legato, which on a violin means one bow. Programmed MIDI usually butts notes
+  // up exactly rather than overlapping, so this stays quiet on quantised files
+  // instead of inventing bowings — which is the safer way to be wrong.
+  const legatoGap = ticksPerBeat * 0.05;
 
   const notes = [];
   let cursor = line[0].startTick;
+  let slurId = 0;
+  let openSlur = null;
+  let slurLength = 0;
+  let lastPitched = -1;
+  let lastSegment = null;
+
+  const breakSlur = () => {
+    openSlur = null;
+    slurLength = 0;
+    lastSegment = null;
+  };
 
   for (const segment of line) {
     const restTicks = segment.startTick - cursor;
     const restBeats = snap(restTicks / ticksPerBeat, quantiseTo);
-    if (restBeats >= quantiseTo) notes.push({ rest: true, beats: restBeats });
+    if (restBeats >= quantiseTo) {
+      notes.push({ rest: true, beats: restBeats });
+      breakSlur(); // a rest is where you retake the bow
+    }
 
     const beats = snap((segment.endTick - segment.startTick) / ticksPerBeat, quantiseTo);
-    if (beats >= quantiseTo) notes.push({ midi: segment.note, beats });
+    if (beats >= quantiseTo) {
+      const note = { midi: segment.note, beats };
+      const overlapped = lastSegment
+        && segment.startTick < lastSegment.soundedUntil - legatoGap;
+
+      if (overlapped && slurLength < maxSlur) {
+        if (openSlur === null) {
+          openSlur = slurId++;
+          notes[lastPitched].slur = openSlur;
+          slurLength = 1;
+        }
+        note.slur = openSlur;
+        slurLength++;
+      } else {
+        openSlur = null;
+        slurLength = 0;
+      }
+
+      notes.push(note);
+      lastPitched = notes.length - 1;
+      lastSegment = segment;
+    }
 
     cursor = segment.endTick;
   }
