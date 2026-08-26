@@ -4,11 +4,13 @@ import { allSongs, SONGS } from '../data/songs.js';
 import { getUserSongs, saveUserSong, deleteUserSong, getSettings } from '../store.js';
 import {
   parseNotation, formatNotation, resolveNotes, transpose, suggestOctaveShift, isRest,
+  withTimings,
 } from '../notation.js';
 import { noteName, midiFromName } from '../theory.js';
 import { Transcriber } from '../audio/transcribe.js';
 import { parseMidi, trackToNotes, describeTrack } from '../data/midi.js';
-import { playNoteNow } from '../audio/synth.js';
+import { playNote } from '../audio/synth.js';
+import { audioContext, ensureAudio } from '../audio/mic.js';
 import { renderStaff } from '../ui/staff.js';
 import { h, $, $$, esc, micGate, debounce, pluralise } from '../ui/dom.js';
 import { toast } from '../app.js';
@@ -206,13 +208,43 @@ export function render(container, { id, tab = 'type' }) {
     location.hash = `#/songs/${song.id}`;
   });
 
-  $(preview, '[data-hear]').addEventListener('click', async () => {
-    const resolved = resolveNotes(parsed.notes).filter((n) => !n.rest && !n.outOfRange);
-    const beatMs = 60000 / tempo();
-    for (let i = 0; i < Math.min(resolved.length, 24); i++) {
-      const note = resolved[i];
-      setTimeout(() => playNoteNow(note.midi, (note.beats * beatMs) / 1000), i * 420);
+  // Preview playback. Notes are scheduled against the audio clock at their real
+  // start times, so written durations and rests are both audible — spacing every
+  // note evenly would play a correct transcription back as the wrong rhythm.
+  const hearBtn = $(preview, '[data-hear]');
+  let previewVoices = [];
+  let previewTimer = null;
+
+  function stopPreview() {
+    for (const voice of previewVoices) voice.stop();
+    previewVoices = [];
+    clearTimeout(previewTimer);
+    previewTimer = null;
+    hearBtn.textContent = 'Hear it';
+  }
+
+  hearBtn.addEventListener('click', async () => {
+    if (previewVoices.length) return stopPreview();
+
+    const timed = withTimings(resolveNotes(parsed.notes), tempo());
+    const playable = timed.filter((n) => !n.rest && !n.outOfRange && n.midi != null);
+    if (!playable.length) return toast('Nothing to play yet.');
+
+    await ensureAudio();
+    const ctx = audioContext();
+    if (ctx.state !== 'running') return toast('Click "Enable sound & mic" at the top first.');
+
+    const start = ctx.currentTime + 0.12;
+    for (const note of playable) {
+      // Separate bows get a small gap so a repeated pitch reads as two notes.
+      const gap = note.slurred ? 0 : 0.03;
+      previewVoices.push(
+        playNote(note.midi, start + note.startTime, Math.max(0.08, note.duration - gap)));
     }
+
+    const last = timed.at(-1);
+    hearBtn.textContent = 'Stop';
+    previewTimer = setTimeout(stopPreview, (last.startTime + last.duration + 0.4) * 1000);
   });
 
   $(preview, '[data-reset]')?.addEventListener('click', () => {
@@ -248,7 +280,10 @@ export function render(container, { id, tab = 'type' }) {
   openTab(['record', 'midi', 'type'].includes(tab) ? tab : 'type');
   refresh();
 
-  return () => { cleanupTab?.(); };
+  return () => {
+    stopPreview();
+    cleanupTab?.();
+  };
 }
 
 // -------------------------------------------------------------------------
