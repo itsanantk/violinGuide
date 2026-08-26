@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "node test/pitch.test.mjs",
+    "test": "node test/pitch.test.mjs && node test/notation.test.mjs && node test/scoring.test.mjs",
     "start": "python -m http.server 8080"
   }
 }

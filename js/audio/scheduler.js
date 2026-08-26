@@ -189,7 +189,10 @@ export class RunScorer {
       const cents = Math.abs(reading.cents);
       if (result.bestCents == null || cents < result.bestCents) result.bestCents = cents;
       result.samples++;
-      result.status = cents <= this.tolerance ? 'hit' : 'close';
+      // Judged on the best moment of the note, not the latest reading. Bowed
+      // notes routinely drift as the bow releases, and grading on the final
+      // frame would downgrade a note that was held perfectly in tune.
+      result.status = result.bestCents <= this.tolerance ? 'hit' : 'close';
     } else if (result.status === 'pending') {
       result.status = 'wrong';
       result.heard = reading.name;
@@ -203,8 +206,14 @@ export class RunScorer {
     if (result.status === 'pending') result.status = 'missed';
   }
 
-  summary() {
-    const played = this.results.filter((r) => !r.rest);
+  /**
+   * @param {number[]|null} indices limit the summary to these note indices —
+   *   needed when practising one looped section, where scoring the whole song
+   *   would report a clean section run as mostly missed.
+   */
+  summary(indices = null) {
+    const wanted = indices ? new Set(indices) : null;
+    const played = this.results.filter((r) => !r.rest && (!wanted || wanted.has(r.index)));
     const hits = played.filter((r) => r.status === 'hit');
     const withCents = played.filter((r) => r.bestCents != null);
     const avgCents = withCents.length

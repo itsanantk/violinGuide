@@ -97,8 +97,11 @@ Everything — progress, scores, streak, songs you added — lives in this brows
 ## Tests
 
 ```
+npm test                      # all three suites
+
 node test/pitch.test.mjs      # pitch detection accuracy
 node test/notation.test.mjs   # parsing, slurs, bowing, fingering, song data
+node test/scoring.test.mjs    # hit/close/wrong/missed judgement
 ```
 
 The pitch tests check the detector against synthesised sawtooth, sine and

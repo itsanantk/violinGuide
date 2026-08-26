@@ -193,7 +193,8 @@ function learnMode(container, song) {
 
   function finish() {
     stopListening?.();
-    const summary = scorer.summary();
+    // Score only what was actually asked for — a looped section is its own run.
+    const summary = scorer.summary(queue.map((n) => n.index));
     const minutes = Math.max(1, Math.round((Date.now() - started) / 60000));
 
     barEl.style.width = '100%';
