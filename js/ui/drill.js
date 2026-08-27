@@ -9,6 +9,8 @@ import { playDing, playNoteNow, startDrone } from '../audio/synth.js';
 import { midiFromName, noteName, fingeringFor, scale as buildScale, STRINGS } from '../theory.js';
 import { getDrillProgress, saveDrillProgress, clearDrillProgress } from '../store.js';
 import { renderFingerboard, fingeringBadge } from './fingerboard.js';
+import { renderStaff } from './staff.js';
+import { resolveNotes } from '../notation.js';
 import { h, $, $$, esc, micGate, formatCents, pluralise } from './dom.js';
 
 const RANGE = 50;
@@ -57,6 +59,7 @@ export function runDrill(container, config, onComplete) {
             <button class="btn small ghost" type="button" data-quit>Stop</button>
           </div>
         </div>
+        <div style="overflow-x:auto;margin-bottom:.6rem" data-staff></div>
         <div class="scale-strip" data-strip></div>
         <div class="meter" style="margin-top:.5rem"><i data-bar style="width:0%"></i></div>
       </div>
@@ -78,6 +81,11 @@ export function runDrill(container, config, onComplete) {
   const stripEl = $(ui, '[data-strip]');
   const board = renderFingerboard($(ui, '[data-board]'));
 
+  // The same run as notation. Every target is written as a quarter note, which
+  // is what a scale is — the drill is about pitch, not rhythm.
+  const staffNotes = resolveNotes(targets.map((midi) => ({ midi, beats: 1 })));
+  const staff = renderStaff($(ui, '[data-staff]'), staffNotes, { showBowing: false });
+
   // The whole run laid out at once — where you have been, where you are, and
   // the finger for each note so the left hand can read ahead.
   const stripNodes = targets.map((midi, i) => {
@@ -96,6 +104,7 @@ export function runDrill(container, config, onComplete) {
   });
 
   function paintStrip() {
+    staff.setCurrent(index, index - 1);
     stripNodes.forEach((node, i) => {
       const result = record[i];
       node.classList.toggle('is-current', i === index);
