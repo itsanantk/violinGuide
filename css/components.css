@@ -468,3 +468,18 @@
 }
 .captured span.rest { color: var(--parchment-dim); font-weight: 400; }
 .captured span.fresh { border-color: var(--varnish); color: var(--varnish); }
+
+/* ---------- daily task cards -------------------------------------------
+ * The session list: ordinary cards, but each one runs its own drill inline
+ * and remembers whether you finished it today. */
+
+.task { transition: border-color 0.22s var(--ease), background 0.22s var(--ease); }
+.task.is-active { border-color: var(--varnish); }
+.task.is-done {
+  border-color: #3d5236;
+  background: rgba(127, 166, 92, 0.05);
+}
+.task.is-done h3 { color: var(--parchment-dim); }
+.task-check { color: var(--intune); margin-right: 0.3rem; }
+.task-panel { margin-top: 1.35rem; }
+.task-actions { display: flex; gap: 0.5rem; align-items: center; flex-shrink: 0; }

@@ -8,6 +8,7 @@ const EMPTY = {
   songs: {},        // songId -> { bestAccuracy, lastPlayed, runs }
   userSongs: {},    // songId -> full song object the user recorded or imported
   practice: {},     // 'YYYY-MM-DD' -> minutes
+  session: { date: null, done: [] },  // today's task list
   settings: {
     a4: 440,
     tolerance: 25,      // cents; how close counts as in tune
@@ -185,5 +186,37 @@ export function importAll(json) {
 
 export function resetAll() {
   cache = structuredClone(EMPTY);
+  save();
+}
+
+// --- the daily session ---------------------------------------------------
+//
+// Kept per-day rather than cumulative: the session is "what to do today", so a
+// new day starts it clean instead of showing yesterday's ticks.
+
+function sessionToday() {
+  const data = load();
+  if (!data.session || data.session.date !== today()) {
+    data.session = { date: today(), done: [] };
+  }
+  return data.session;
+}
+
+export function getSessionDone() {
+  return [...sessionToday().done];
+}
+
+export function setSessionStep(id, done = true) {
+  const session = sessionToday();
+  const set = new Set(session.done);
+  if (done) set.add(id);
+  else set.delete(id);
+  session.done = [...set];
+  save();
+}
+
+export function resetSession() {
+  const data = load();
+  data.session = { date: today(), done: [] };
   save();
 }
