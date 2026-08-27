@@ -1,5 +1,5 @@
 import { allSongs, totalBeats, estimatedSeconds } from '../data/songs.js';
-import { getUserSongs, getSongProgress } from '../store.js';
+import { getUserSongs, getSongProgress, getSongTempoScale, setSongTempoScale } from '../store.js';
 import { resolveNotes, formatNotation } from '../notation.js';
 import { renderStaff } from '../ui/staff.js';
 import { renderFingerboard, fingeringBadge } from '../ui/fingerboard.js';
@@ -40,7 +40,8 @@ export function render(container, { id }) {
   `));
 
   // --- actions
-  container.appendChild(h(`
+  const savedPct = Math.round(getSongTempoScale(song.id) * 100);
+  const actions = h(`
     <div class="card" style="border-color:${needs ? 'var(--rosin)' : 'var(--varnish)'}">
       ${needs ? `
         <h3>Add the notes to unlock this</h3>
@@ -66,9 +67,26 @@ export function render(container, { id }) {
             <a class="btn ghost small" href="#/songs/${esc(song.id)}/edit">Edit</a>
           </div>
         </div>
+        <div class="field" style="margin-top:1.25rem">
+          <label for="speed">Play-along speed —
+            <b class="mono" data-speed-bpm>${Math.round(song.tempo * savedPct / 100)}</b> bpm
+            (<span data-speed-pct>${savedPct}</span>% of ${song.tempo})</label>
+          <input id="speed" type="range" min="30" max="120" step="5" value="${savedPct}">
+          <span class="small muted">Slow it right down while learning. Speed is the last
+            thing to add, not the first. Remembered per song.</span>
+        </div>
       `}
     </div>
-  `));
+  `);
+  container.appendChild(actions);
+
+  const speed = $(actions, '#speed');
+  speed?.addEventListener('input', () => {
+    const pct = Number(speed.value);
+    setSongTempoScale(song.id, pct / 100);
+    $(actions, '[data-speed-bpm]').textContent = Math.round(song.tempo * pct / 100);
+    $(actions, '[data-speed-pct]').textContent = pct;
+  });
 
   // --- guide
   container.appendChild(h(`

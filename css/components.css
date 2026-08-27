@@ -483,3 +483,48 @@
 .task-check { color: var(--intune); margin-right: 0.3rem; }
 .task-panel { margin-top: 1.35rem; }
 .task-actions { display: flex; gap: 0.5rem; align-items: center; flex-shrink: 0; }
+
+/* ---------- scale strip -------------------------------------------------
+ * The whole drill laid out at once: what you have played, what you are on,
+ * and what is coming — with the finger for each, so the left hand can read
+ * ahead instead of being told one note at a time. */
+
+.scale-strip {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.15rem 0 0.5rem;
+  scrollbar-width: thin;
+}
+.scale-note {
+  flex: 0 0 auto;
+  min-width: 46px;
+  text-align: center;
+  padding: 0.4rem 0.35rem;
+  border-radius: 6px;
+  border: 1px solid var(--ebony-edge);
+  background: var(--ebony);
+  transition: all 0.2s var(--ease);
+}
+.scale-note b {
+  display: block;
+  font: 700 0.88rem/1.2 var(--mono);
+  color: var(--parchment-mid);
+}
+.scale-note small {
+  display: block;
+  font: 400 0.62rem/1.2 var(--mono);
+  color: var(--parchment-dim);
+  margin-top: 3px;
+  white-space: nowrap;
+}
+.scale-note.is-done { border-color: #3d5236; background: rgba(127, 166, 92, 0.07); }
+.scale-note.is-done b { color: var(--intune); }
+.scale-note.is-current {
+  border-color: var(--varnish);
+  background: rgba(200, 113, 55, 0.14);
+  box-shadow: 0 0 0 2px rgba(200, 113, 55, 0.14);
+}
+.scale-note.is-current b { color: var(--varnish); }
+.scale-note.is-missed { border-color: #5c3129; }
+.scale-note.is-missed b { color: var(--sharp); }

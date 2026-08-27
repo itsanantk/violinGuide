@@ -6,9 +6,10 @@
 
 import { listen } from '../audio/mic.js';
 import { playDing, playNoteNow, startDrone } from '../audio/synth.js';
-import { midiFromName, noteName, scale as buildScale, STRINGS } from '../theory.js';
+import { midiFromName, noteName, fingeringFor, scale as buildScale, STRINGS } from '../theory.js';
+import { getDrillProgress, saveDrillProgress, clearDrillProgress } from '../store.js';
 import { renderFingerboard, fingeringBadge } from './fingerboard.js';
-import { h, $, esc, micGate, formatCents, pluralise } from './dom.js';
+import { h, $, $$, esc, micGate, formatCents, pluralise } from './dom.js';
 
 const RANGE = 50;
 const FRAMES_PER_SECOND = 60;
@@ -46,16 +47,18 @@ export function runDrill(container, config, onComplete) {
       </div>
 
       <div class="card">
-        <div class="spread">
+        <div class="spread" style="margin-bottom:.75rem">
           <span class="small muted" data-progress></span>
           <div class="row">
             <button class="btn small ghost" type="button" data-hear>Hear it</button>
             <button class="btn small ghost" type="button" data-skip>Skip</button>
             <button class="btn small ghost" type="button" data-drone>Drone</button>
+            <button class="btn small ghost" type="button" data-restart>Restart</button>
             <button class="btn small ghost" type="button" data-quit>Stop</button>
           </div>
         </div>
-        <div class="meter" style="margin-top:.75rem"><i data-bar style="width:0%"></i></div>
+        <div class="scale-strip" data-strip></div>
+        <div class="meter" style="margin-top:.5rem"><i data-bar style="width:0%"></i></div>
       </div>
 
       <div class="card" data-done hidden></div>
@@ -72,7 +75,40 @@ export function runDrill(container, config, onComplete) {
   const progressEl = $(ui, '[data-progress]');
   const barEl = $(ui, '[data-bar]');
   const doneEl = $(ui, '[data-done]');
+  const stripEl = $(ui, '[data-strip]');
   const board = renderFingerboard($(ui, '[data-board]'));
+
+  // The whole run laid out at once — where you have been, where you are, and
+  // the finger for each note so the left hand can read ahead.
+  const stripNodes = targets.map((midi, i) => {
+    const fingering = fingeringFor(midi);
+    const place = !fingering ? '—'
+      : fingering.finger === 0 ? `${fingering.string} open`
+      : `${fingering.string} · ${fingering.finger}`;
+    const node = h(`
+      <div class="scale-note" title="${esc(noteName(midi))} — ${esc(fingeringBadge(midi))}">
+        <b>${esc(noteName(midi))}</b><small>${esc(place)}</small>
+      </div>
+    `);
+    node.addEventListener('click', () => playNoteNow(midi, 0.6));
+    stripEl.appendChild(node);
+    return node;
+  });
+
+  function paintStrip() {
+    stripNodes.forEach((node, i) => {
+      const result = record[i];
+      node.classList.toggle('is-current', i === index);
+      node.classList.toggle('is-done', Boolean(result?.passed));
+      node.classList.toggle('is-missed', Boolean(result) && !result.passed);
+    });
+    // Keep the current note in view without yanking the whole page around.
+    const current = stripNodes[index];
+    if (current && stripEl.scrollWidth > stripEl.clientWidth) {
+      const target = current.offsetLeft - stripEl.clientWidth / 2 + current.offsetWidth / 2;
+      stripEl.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+    }
+  }
 
   const half = (tolerance / RANGE) * 50;
   zoneEl.style.left = `${50 - half}%`;
@@ -84,6 +120,21 @@ export function runDrill(container, config, onComplete) {
   let drone = null;
   let finished = false;
   const record = [];
+
+  // Pick up where you left off, if you left off today. Leaving a two-octave
+  // scale half-finished and coming back to the start is just punishing.
+  const drillId = config.id ?? null;
+  if (drillId) {
+    const saved = getDrillProgress(drillId);
+    if (saved && saved.index > 0 && saved.index < targets.length) {
+      index = saved.index;
+      record.push(...(saved.record ?? []));
+    }
+  }
+
+  function persist() {
+    if (drillId) saveDrillProgress(drillId, { index, record });
+  }
 
   function target() {
     return targets[index];
@@ -104,11 +155,13 @@ export function runDrill(container, config, onComplete) {
       ${holdSeconds >= 1 ? `<br><span class="muted small">hold it for ${holdSeconds} seconds</span>` : ''}`;
     centsEl.textContent = 'Play it';
     board.setNotes([{ midi }]);
+    paintStrip();
   }
 
   function next(result) {
     record.push(result);
     index++;
+    persist();
     if (index >= targets.length) finish();
     else show();
   }
@@ -128,12 +181,17 @@ export function runDrill(container, config, onComplete) {
     const accuracy = record.length ? (hit.length / record.length) * 100 : 0;
     const passed = accuracy >= 80;
 
+    // The run is over, so there is nothing to resume into.
+    if (drillId) clearDrillProgress(drillId);
+
     barEl.style.width = '100%';
     nameEl.textContent = passed ? 'Passed' : 'Done';
     nameEl.className = `bignote-name${passed ? ' is-good' : ''}`;
     subEl.textContent = '';
     centsEl.textContent = '';
     board.clear();
+    index = targets.length;
+    paintStrip();
 
     doneEl.hidden = false;
     doneEl.replaceChildren(h(`
@@ -165,6 +223,7 @@ export function runDrill(container, config, onComplete) {
     finished = false;
     index = 0;
     record.length = 0;
+    if (drillId) clearDrillProgress(drillId);
     doneEl.hidden = true;
     show();
     if (gate.ready && !stopListening) stopListening = listen(onReading);
@@ -228,6 +287,7 @@ export function runDrill(container, config, onComplete) {
     const midi = target();
     if (midi != null) next({ midi, passed: false, cents: null });
   });
+  $(ui, '[data-restart]').addEventListener('click', restart);
   $(ui, '[data-quit]').addEventListener('click', finish);
   $(ui, '[data-drone]').addEventListener('click', (e) => {
     if (drone) {

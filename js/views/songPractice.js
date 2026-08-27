@@ -8,7 +8,10 @@
 // learn mode is the same note that scores a hit in play-along.
 
 import { allSongs } from '../data/songs.js';
-import { getUserSongs, getSettings, setSetting, recordSongRun, logPractice } from '../store.js';
+import {
+  getUserSongs, getSettings, setSetting, recordSongRun, logPractice,
+  getSongTempoScale, setSongTempoScale,
+} from '../store.js';
 import { resolveNotes, withTimings, isRest } from '../notation.js';
 import { listen } from '../audio/mic.js';
 import { playNote, playDing, playNoteNow } from '../audio/synth.js';
@@ -353,6 +356,10 @@ function playAlong(container, song) {
   const settings = getSettings();
   const resolved = resolveNotes(song.notes);
   const timed = withTimings(resolved, song.tempo);
+  // Speed is remembered per song: the tempo you need for Canon in D is not the
+  // tempo you need for Ode to Joy, and re-setting it every run is friction.
+  const savedScale = getSongTempoScale(song.id);
+  const savedPct = Math.round(savedScale * 100);
 
   container.appendChild(h(`
     <header>
@@ -388,10 +395,10 @@ function playAlong(container, song) {
         <button class="btn primary" type="button" data-play>Start</button>
         <button class="btn" type="button" data-stop disabled>Stop</button>
         <div class="grow">
-          <label class="small" for="tempo">Tempo
-            <b class="mono" data-tempo-value>${song.tempo}</b> bpm
-            (<span data-tempo-pct>100</span>%)</label>
-          <input id="tempo" type="range" min="40" max="100" step="5" value="100">
+          <label class="small" for="tempo">Speed
+            <b class="mono" data-tempo-value>${Math.round(song.tempo * savedScale)}</b> bpm
+            (<span data-tempo-pct>${savedPct}</span>% of ${song.tempo})</label>
+          <input id="tempo" type="range" min="30" max="120" step="5" value="${savedPct}">
         </div>
         <label class="row small" style="cursor:pointer">
           <input type="checkbox" data-metro style="width:auto" ${settings.metronome ? 'checked' : ''}>
@@ -432,7 +439,7 @@ function playAlong(container, song) {
 
   const player = new SongPlayer(timed, {
     tempo: song.tempo,
-    tempoScale: 1,
+    tempoScale: savedScale,
     metronome: settings.metronome,
     countIn: true,
     beatsPerBar: song.timeSignature[0],
@@ -534,6 +541,7 @@ function playAlong(container, song) {
     const pct = Number(tempoInput.value);
     player.tempoScale = pct / 100;
     player.setNotes(resolved);
+    setSongTempoScale(song.id, pct / 100);
     $(ui, '[data-tempo-value]').textContent = Math.round(song.tempo * pct / 100);
     $(ui, '[data-tempo-pct]').textContent = pct;
   });

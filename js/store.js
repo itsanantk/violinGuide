@@ -9,6 +9,7 @@ const EMPTY = {
   userSongs: {},    // songId -> full song object the user recorded or imported
   practice: {},     // 'YYYY-MM-DD' -> minutes
   session: { date: null, done: [] },  // today's task list
+  drills: {},       // drillId -> { date, index, record } mid-run position
   settings: {
     a4: 440,
     tolerance: 25,      // cents; how close counts as in tune
@@ -218,5 +219,43 @@ export function setSessionStep(id, done = true) {
 export function resetSession() {
   const data = load();
   data.session = { date: today(), done: [] };
+  save();
+}
+
+// --- drill progress ------------------------------------------------------
+//
+// Where you were in a drill, so leaving the page mid-scale does not throw the
+// run away. Dated, because resuming yesterday's half-finished scale is not
+// what anyone wants.
+
+export function getDrillProgress(id) {
+  const saved = load().drills?.[id];
+  if (!saved || saved.date !== today()) return null;
+  return saved;
+}
+
+export function saveDrillProgress(id, { index, record }) {
+  const data = load();
+  if (!data.drills) data.drills = {};
+  data.drills[id] = { date: today(), index, record };
+  save();
+}
+
+export function clearDrillProgress(id) {
+  const data = load();
+  if (data.drills) delete data.drills[id];
+  save();
+}
+
+// --- per-song playback speed ---------------------------------------------
+
+export function getSongTempoScale(id) {
+  return load().songs[id]?.tempoScale ?? 1;
+}
+
+export function setSongTempoScale(id, scale) {
+  const data = load();
+  if (!data.songs[id]) data.songs[id] = { bestAccuracy: 0, runs: 0, lastPlayed: null };
+  data.songs[id].tempoScale = scale;
   save();
 }

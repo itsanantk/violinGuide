@@ -363,7 +363,7 @@ function buildSession(level, playable) {
         + 'and moves on once each string is in.',
       minutes: 2,
       kind: 'drill',
-      config: { type: 'openStrings', tolerance: 15, holdSeconds: 1.2 },
+      config: { id: 'tune', type: 'openStrings', tolerance: 15, holdSeconds: 1.2 },
     },
     {
       id: 'longtones',
@@ -372,7 +372,8 @@ function buildSession(level, playable) {
         + 'anything the left hand does.',
       minutes: 4,
       kind: 'drill',
-      config: { type: 'longTone', notes: ['G3', 'D4', 'A4', 'E5'], tolerance: 20, holdSeconds: 4 },
+      config: { id: 'longtones', type: 'longTone', notes: ['G3', 'D4', 'A4', 'E5'],
+        tolerance: 20, holdSeconds: 4 },
     },
   ];
 
@@ -396,7 +397,7 @@ function buildSession(level, playable) {
       detail: 'Up and down, every note checked. Turn the drone on and play against it.',
       minutes: 5,
       kind: 'drill',
-      config: { type: 'scale', tonic: 'D4', quality: 'major', octaves: 1, tolerance: 25 },
+      config: { id: 'scale-d', type: 'scale', tonic: 'D4', quality: 'major', octaves: 1, tolerance: 25 },
     });
   }
 
