@@ -1,12 +1,21 @@
-// Today: streak, what to do next, and a suggested twenty minutes.
+// Today: streak, and the guided session.
+//
+// The session is a sequence you work down, not a menu of links. Each step runs
+// inline — the drills mount right there rather than sending you to another page
+// and losing your place. Nothing is gated: any step can be started at any time
+// and any step can be ticked off by hand, because "I already did my scales"
+// should never be an argument with the app.
 
 import { LEVELS, allLessons } from '../data/curriculum.js';
 import { allSongs } from '../data/songs.js';
 import {
-  isLessonDone, getExercise, getSongProgress, getUserSongs,
-  getStreak, getPracticeLog, practisedToday, today, exportAll, importAll, resetAll,
+  isLessonDone, getExercise, recordExercise, getSongProgress, getUserSongs,
+  getStreak, getPracticeLog, practisedToday, today, logPractice,
+  getSessionDone, setSessionStep, resetSession,
+  exportAll, importAll, resetAll,
 } from '../store.js';
-import { h, $, $$, esc, pluralise } from '../ui/dom.js';
+import { runDrill } from '../ui/drill.js';
+import { h, $, esc, pluralise } from '../ui/dom.js';
 import { toast } from '../app.js';
 
 export function render(container) {
@@ -28,11 +37,10 @@ export function render(container) {
       <h1>${practisedToday() ? 'Practised today' : 'Ready when you are'}</h1>
       <p>${practisedToday()
         ? 'Nice. Anything else today is a bonus.'
-        : 'Ten focused minutes beats an hour of drifting. Start anywhere below.'}</p>
+        : 'Ten focused minutes beats an hour of drifting. Work down the session below.'}</p>
     </header>
   `));
 
-  // --- streak + progress
   container.appendChild(h(`
     <div class="grid three">
       <div class="card">
@@ -62,7 +70,6 @@ export function render(container) {
     </div>
   `));
 
-  // --- the last fortnight
   container.appendChild(h(`
     <div class="card" style="margin-top:1rem">
       <span class="eyebrow">Last two weeks</span>
@@ -84,29 +91,197 @@ export function render(container) {
     </div>
   `));
 
-  // --- suggested session
-  container.appendChild(h(`
-    <section style="margin-top:2.5rem">
-      <h2>A twenty minute session</h2>
-      <p class="muted" style="margin-bottom:1.25rem">Built from where you are:
-        <b>Level ${currentLevel.number} — ${esc(currentLevel.title)}</b>.</p>
-      <div class="stack">
-        ${routine(currentLevel, playable).map((step) => `
-          <div class="card">
-            <div class="spread">
-              <div style="min-width:0">
-                <h3 style="margin-bottom:.2rem">${esc(step.title)}
-                  <span class="chip" style="margin-left:.4rem">${step.minutes} min</span></h3>
-                <p class="muted small" style="margin:0">${esc(step.detail)}</p>
-              </div>
-              <a class="btn ${step.primary ? 'primary' : ''}" href="${esc(step.href)}">Go</a>
-            </div>
-          </div>`).join('')}
-      </div>
-    </section>
-  `));
+  // ---- the guided session ------------------------------------------------
 
-  // --- pick up where you left off
+  const steps = buildSession(currentLevel, playable);
+  const done = new Set(getSessionDone());
+
+  // A song played today ticks itself off — you did the work, the app noticed.
+  for (const step of steps) {
+    if (step.songId && getSongProgress(step.songId).lastPlayed === today()) done.add(step.id);
+  }
+
+  const section = h(`
+    <section style="margin-top:2.5rem">
+      <div class="spread" style="align-items:baseline">
+        <h2 style="margin:0">Today's session</h2>
+        <span class="small muted mono" data-count></span>
+      </div>
+      <p class="muted" style="margin:.5rem 0 1.5rem">Built from where you are:
+        <b>Level ${currentLevel.number} — ${esc(currentLevel.title)}</b>.
+        Work down it, or jump straight to whichever step you want.</p>
+      <div class="session" data-session></div>
+      <div data-complete></div>
+    </section>
+  `);
+  container.appendChild(section);
+
+  const sessionEl = $(section, '[data-session]');
+  const completeEl = $(section, '[data-complete]');
+  const countEl = $(section, '[data-count]');
+
+  let activeIndex = -1;
+  let drillCleanup = null;
+
+  function stopDrill() {
+    drillCleanup?.();
+    drillCleanup = null;
+  }
+
+  function setDone(step, isDone) {
+    if (isDone) done.add(step.id);
+    else done.delete(step.id);
+    setSessionStep(step.id, isDone);
+  }
+
+  function complete(step) {
+    setDone(step, true);
+    if (step.minutes) logPractice(step.minutes);
+    // Move to the next thing that still needs doing, if there is one.
+    activeIndex = steps.findIndex((s) => !done.has(s.id));
+    paint();
+  }
+
+  // paint() owns mounting entirely. It tears the list down and rebuilds it, so
+  // anything running inside a step has to be stopped first — otherwise the
+  // drill's DOM is discarded while its microphone loop keeps going, and the
+  // active step comes back empty after any repaint.
+  function paint() {
+    stopDrill();
+    sessionEl.replaceChildren();
+    countEl.textContent = `${done.size} of ${steps.length} done`;
+
+    steps.forEach((step, index) => {
+      const isDone = done.has(step.id);
+      const isActive = index === activeIndex && !isDone;
+
+      const row = h(`
+        <div class="step${isDone ? ' is-done' : ''}${isActive ? ' is-active' : ''}">
+          <button class="step-num" type="button"
+                  aria-label="${isDone ? 'Mark not done' : 'Start'}: ${esc(step.title)}">
+            ${isDone ? '✓' : index + 1}
+          </button>
+          <div class="step-card">
+            <div class="step-head">
+              <div style="min-width:0">
+                <div class="step-title">${esc(step.title)}
+                  <span class="chip" style="margin-left:.4rem">${step.minutes} min</span></div>
+                <div class="step-detail">${esc(step.detail)}</div>
+              </div>
+              <div class="step-actions"></div>
+            </div>
+            <div class="step-panel" data-panel hidden></div>
+          </div>
+        </div>
+      `);
+
+      const actions = $(row, '.step-actions');
+      const panel = $(row, '[data-panel]');
+
+      if (isDone) {
+        const undo = h('<button class="btn small ghost" type="button">Undo</button>');
+        undo.addEventListener('click', () => {
+          setDone(step, false);
+          paint();
+        });
+        actions.appendChild(undo);
+      } else {
+        if (step.kind === 'link') {
+          actions.appendChild(h(
+            `<a class="btn small${isActive ? ' primary' : ''}" href="${esc(step.href)}">Open</a>`));
+        } else if (!isActive) {
+          const start = h('<button class="btn small" type="button">Start</button>');
+          start.addEventListener('click', () => activate(index));
+          actions.appendChild(start);
+        }
+
+        const tick = h('<button class="btn small ghost" type="button">Mark done</button>');
+        tick.addEventListener('click', () => complete(step));
+        actions.appendChild(tick);
+      }
+
+      $(row, '.step-num').addEventListener('click', () => {
+        if (isDone) {
+          setDone(step, false);
+          paint();
+        } else {
+          activate(index);
+        }
+      });
+
+      if (isActive) panel.hidden = false;
+      sessionEl.appendChild(row);
+    });
+
+    // Now that the rows exist, fill in whatever the active step needs.
+    const active = activeIndex >= 0 ? steps[activeIndex] : null;
+    if (active && !done.has(active.id)) {
+      if (active.kind === 'drill') {
+        mountDrill(activeIndex);
+      } else if (active.kind === 'manual') {
+        sessionEl.children[activeIndex]?.querySelector('[data-panel]')?.replaceChildren(h(`
+          <p class="small muted" style="margin:0">Play something you already know and enjoy —
+            it does not matter what. Then tick this off.</p>
+        `));
+      }
+    }
+
+    completeEl.replaceChildren();
+    if (done.size === steps.length) {
+      const card = h(`
+        <div class="session-done" style="margin-top:1rem">
+          <h3>Session done</h3>
+          <p class="muted small">That is the whole twenty minutes. Come back tomorrow —
+            on a physical skill, frequency beats duration.</p>
+          <button class="btn ghost small" type="button">Start it over</button>
+        </div>
+      `);
+      $(card, 'button').addEventListener('click', () => {
+        done.clear();
+        resetSession();
+        activeIndex = -1;
+        paint();
+      });
+      completeEl.appendChild(card);
+    }
+  }
+
+  function activate(index) {
+    activeIndex = index;
+    paint();
+    sessionEl.children[index]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function mountDrill(index) {
+    const step = steps[index];
+    const panel = sessionEl.children[index]?.querySelector('[data-panel]');
+    if (!panel) return;
+    panel.hidden = false;
+
+    drillCleanup = runDrill(panel, step.config, (result) => {
+      if (result.closed) {
+        stopDrill();
+        activeIndex = -1;
+        paint();
+        return;
+      }
+      if (step.exerciseId) {
+        recordExercise(step.exerciseId, { passed: result.passed, avgCents: result.avgCents });
+      }
+      if (result.passed) {
+        toast(`${step.title} — done.`);
+        complete(step);
+      } else {
+        // Leave the step open so another go does not cost them their place.
+        toast('Under 80%. Run it again, or mark it done and move on.');
+      }
+    });
+  }
+
+  paint();
+
+  // ---- pick up where you left off ----------------------------------------
+
   const recent = songs
     .map((s) => ({ song: s, progress: getSongProgress(s.id) }))
     .filter((x) => x.progress.lastPlayed)
@@ -136,7 +311,8 @@ export function render(container) {
     `));
   }
 
-  // --- data
+  // ---- data ---------------------------------------------------------------
+
   const data = h(`
     <section style="margin-top:3rem">
       <details class="card">
@@ -189,58 +365,81 @@ export function render(container) {
     btn.textContent = 'Really reset? Click again';
   });
 
-  return () => {};
+  return () => { stopDrill(); };
 }
 
-function routine(level, playable) {
+/**
+ * Today's session, built from the current level.
+ *
+ * The order is the argument: tune before you play anything, bow control before
+ * the left hand gets involved, the level's own drill before repertoire, and
+ * finish on something that already works.
+ */
+function buildSession(level, playable) {
   const steps = [
     {
+      id: 'tune',
       title: 'Tune up',
-      detail: 'All four strings. Do it every single session, before anything else.',
+      detail: 'One string at a time, G through E. It tells you how sharp or flat you are, '
+        + 'and moves on once each string is in.',
       minutes: 2,
-      href: '#/tuner',
-      primary: true,
+      kind: 'drill',
+      config: { type: 'openStrings', tolerance: 15, holdSeconds: 1.2 },
     },
     {
+      id: 'longtones',
       title: 'Long tones',
-      detail: 'Open strings, four seconds each, dead steady. Bow control before anything else.',
+      detail: 'Hold each open string dead steady for four seconds. Bow control before '
+        + 'anything the left hand does.',
       minutes: 4,
-      href: '#/trainer',
+      kind: 'drill',
+      config: { type: 'longTone', notes: ['G3', 'D4', 'A4', 'E5'], tolerance: 20, holdSeconds: 4 },
     },
   ];
 
-  if (level.exercises.length) {
-    const exercise = level.exercises.find((e) => !getExercise(e.id)?.passed) ?? level.exercises[0];
+  // The level's own drill — unless it is the tuning one, which is already step 1.
+  const exercise = level.exercises.find((e) => !getExercise(e.id)?.passed) ?? level.exercises[0];
+  if (exercise && exercise.type !== 'openStrings') {
     steps.push({
+      id: `ex-${exercise.id}`,
+      exerciseId: exercise.id,
       title: exercise.title,
       detail: `Level ${level.number} drill — ${exercise.detail}`,
       minutes: 5,
-      href: '#/learn',
+      kind: 'drill',
+      config: exercise,
     });
   } else {
     steps.push({
+      id: 'scale-d',
+      exerciseId: 'game-dmajor',
       title: 'D major scale',
-      detail: 'Slowly, against the drone. Every note checked.',
+      detail: 'Up and down, every note checked. Turn the drone on and play against it.',
       minutes: 5,
-      href: '#/trainer',
+      kind: 'drill',
+      config: { type: 'scale', tonic: 'D4', quality: 'major', octaves: 1, tolerance: 25 },
     });
   }
 
   const song = playable.find((s) => getSongProgress(s.id).bestAccuracy < 80) ?? playable[0];
   if (song) {
     steps.push({
+      id: `song-${song.id}`,
+      songId: song.id,
       title: song.title,
       detail: 'Learn mode for anything shaky, then play along at a tempo you can hold.',
       minutes: 8,
+      kind: 'link',
       href: `#/songs/${song.id}/practice?mode=learn`,
     });
   }
 
   steps.push({
+    id: 'finish',
     title: 'Finish on something you can play',
-    detail: 'End well. It makes tomorrow easier — that is most of what a streak is.',
+    detail: 'End well. It makes tomorrow easier, and that is most of what a streak is.',
     minutes: 1,
-    href: '#/songs',
+    kind: 'manual',
   });
 
   return steps;
