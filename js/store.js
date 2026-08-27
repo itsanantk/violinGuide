@@ -10,6 +10,7 @@ const EMPTY = {
   practice: {},     // 'YYYY-MM-DD' -> minutes
   session: { date: null, done: [] },  // today's task list
   drills: {},       // drillId -> { date, index, record } mid-run position
+  scales: {},       // scaleId -> { reps, best, lastAt } cumulative
   settings: {
     a4: 440,
     tolerance: 25,      // cents; how close counts as in tune
@@ -258,4 +259,30 @@ export function setSongTempoScale(id, scale) {
   if (!data.songs[id]) data.songs[id] = { bestAccuracy: 0, runs: 0, lastPlayed: null };
   data.songs[id].tempoScale = scale;
   save();
+}
+
+// --- scale practice ------------------------------------------------------
+//
+// Cumulative rather than per-day: grinding a scale is a long game, and the
+// count of times through it is the thing worth keeping.
+
+export function getScaleStats(id) {
+  return load().scales?.[id] ?? { reps: 0, best: 0, lastAt: null };
+}
+
+export function recordScaleRep(id, accuracy) {
+  const data = load();
+  if (!data.scales) data.scales = {};
+  const previous = getScaleStats(id);
+  data.scales[id] = {
+    reps: previous.reps + 1,
+    best: Math.max(previous.best, accuracy),
+    lastAt: today(),
+  };
+  save();
+  return data.scales[id];
+}
+
+export function getAllScaleStats() {
+  return { ...(load().scales ?? {}) };
 }

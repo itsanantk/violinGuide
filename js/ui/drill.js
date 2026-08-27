@@ -336,7 +336,9 @@ function buildTargets(config) {
     case 'scale': {
       const tonic = midiFromName(config.tonic ?? 'D4');
       const up = buildScale(tonic, config.quality ?? 'major', config.octaves ?? 1);
-      // Up and back down, without repeating the top note.
+      if (config.direction === 'up') return up;
+      if (config.direction === 'down') return [...up].reverse();
+      // Default: up and back down, without repeating the top note.
       return [...up, ...up.slice(0, -1).reverse()];
     }
 

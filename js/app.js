@@ -13,6 +13,7 @@ import * as songs from './views/songs.js';
 import * as songDetail from './views/songDetail.js';
 import * as songPractice from './views/songPractice.js';
 import * as songEditor from './views/songEditor.js';
+import * as scales from './views/scales.js';
 import * as tuner from './views/tuner.js';
 import * as trainer from './views/trainer.js';
 import * as fingering from './views/fingering.js';
@@ -25,6 +26,7 @@ const ROUTES = [
   ['/songs/:id', songDetail],
   ['/songs/:id/practice', songPractice],
   ['/songs/:id/edit', songEditor],
+  ['/scales', scales],
   ['/tuner', tuner],
   ['/trainer', trainer],
   ['/fingering', fingering],

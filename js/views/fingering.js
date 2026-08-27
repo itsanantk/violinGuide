@@ -3,8 +3,10 @@
 import { STRINGS, FIRST_POSITION_SPAN, noteName, fingeringFor, allFingeringsFor, midiFromName }
   from '../theory.js';
 import { playNoteNow } from '../audio/synth.js';
+import { listen } from '../audio/mic.js';
+import { getSettings } from '../store.js';
 import { renderFingerboard, fingeringBadge } from '../ui/fingerboard.js';
-import { h, $, $$, esc } from '../ui/dom.js';
+import { h, $, $$, esc, micGate, formatCents } from '../ui/dom.js';
 
 export function render(container) {
   container.appendChild(h(`
@@ -16,6 +18,24 @@ export function render(container) {
          to bunch closer together for the higher notes.</p>
     </header>
   `));
+
+  const liveHost = h('<div style="margin-bottom:1rem"></div>');
+  container.appendChild(liveHost);
+
+  const live = h(`
+    <div class="card" style="margin-bottom:1rem;border-color:var(--varnish)">
+      <div class="spread" style="align-items:flex-start">
+        <div style="min-width:0">
+          <span class="eyebrow">Playing now</span>
+          <div class="bignote-name" data-live-name style="font-size:3.2rem">—</div>
+          <div class="bignote-sub" data-live-sub>Play anything and it will show up here.</div>
+          <p class="tuner-cents" data-live-cents style="text-align:left;margin-top:.6rem"></p>
+        </div>
+        <div style="width:clamp(130px,20vw,170px);flex-shrink:0" data-live-board></div>
+      </div>
+    </div>
+  `);
+  container.appendChild(live);
 
   const layout = h(`
     <div class="grid two" style="align-items:start">
@@ -100,6 +120,54 @@ export function render(container) {
     select(midi);
   });
 
+  // --- live: whatever you play lands on its own fingerboard
+  const liveName = $(live, '[data-live-name]');
+  const liveSub = $(live, '[data-live-sub]');
+  const liveCents = $(live, '[data-live-cents]');
+  const liveBoard = renderFingerboard($(live, '[data-live-board]'), { showTapes: true });
+
+  let stopListening = null;
+
+  function paintLive(reading) {
+    if (!reading) {
+      liveName.textContent = '—';
+      liveName.className = 'bignote-name';
+      liveName.style.fontSize = '3.2rem';
+      liveSub.textContent = 'Play anything and it will show up here.';
+      liveCents.textContent = '';
+      liveBoard.clear();
+      return;
+    }
+
+    const tolerance = getSettings().tolerance;
+    const inTune = Math.abs(reading.cents) <= tolerance;
+    const fingering = fingeringFor(reading.midi);
+
+    liveName.textContent = reading.name;
+    liveName.className = `bignote-name${inTune ? ' is-good' : ' is-off'}`;
+    liveSub.innerHTML = fingering
+      ? esc(fingeringBadge(reading.midi))
+      : '<span class="muted">outside first position</span>';
+
+    // How far off the nearest note you are — the thing a plain tuner hides
+    // behind a needle, said in cents and in plain words.
+    liveCents.innerHTML = inTune
+      ? `<b>In tune</b> — ${formatCents(reading.cents)} cents from ${esc(reading.name)}`
+      : `<b>${formatCents(reading.cents)}</b> cents `
+        + `${reading.cents < 0 ? 'flat of' : 'sharp of'} ${esc(reading.name)}`;
+
+    liveBoard.setLive({ midi: reading.midi, cents: reading.cents, tolerance });
+    if (fingering) liveBoard.setNotes([{ midi: reading.midi }]);
+    else liveBoard.setNotes([]);
+  }
+
+  const gate = micGate(liveHost, { label: 'Turn on the microphone to see what you play' });
+  gate.onReady(() => {
+    stopListening?.();
+    stopListening = listen(paintLive, { a4: getSettings().a4 });
+  });
+  paintLive(null);
+
   // Full chart
   const chart = h(`
     <div class="card" style="margin-top:1rem">
@@ -144,7 +212,11 @@ export function render(container) {
   });
 
   select(midiFromName('F#4'));
-  return () => {};
+
+  return () => {
+    stopListening?.();
+    gate.destroy();
+  };
 }
 
 function describeTone(f) {
