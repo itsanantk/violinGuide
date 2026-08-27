@@ -24,14 +24,13 @@ export function render(container) {
 
   const live = h(`
     <div class="card" style="margin-bottom:1rem;border-color:var(--varnish)">
-      <div class="spread" style="align-items:flex-start">
+      <div class="spread" style="align-items:baseline;gap:1.5rem;flex-wrap:wrap">
         <div style="min-width:0">
           <span class="eyebrow">Playing now</span>
           <div class="bignote-name" data-live-name style="font-size:3.2rem">—</div>
-          <div class="bignote-sub" data-live-sub>Play anything and it will show up here.</div>
-          <p class="tuner-cents" data-live-cents style="text-align:left;margin-top:.6rem"></p>
+          <div class="bignote-sub" data-live-sub>Play anything — it lights up on the board below.</div>
         </div>
-        <div style="width:clamp(130px,20vw,170px);flex-shrink:0" data-live-board></div>
+        <p class="tuner-cents" data-live-cents style="text-align:right;margin:0"></p>
       </div>
     </div>
   `);
@@ -42,7 +41,8 @@ export function render(container) {
       <div class="card">
         <div data-board></div>
         <p class="small muted" style="text-align:center;margin:1rem 0 0">
-          Dashed lines are where tapes go: 1st, 2nd, 3rd and 4th finger.</p>
+          Dashed lines are where tapes go: 1st, 2nd, 3rd and 4th finger.
+          The amber dot is what you are playing right now.</p>
       </div>
       <div class="stack">
         <div class="card" data-detail>
@@ -124,8 +124,6 @@ export function render(container) {
   const liveName = $(live, '[data-live-name]');
   const liveSub = $(live, '[data-live-sub]');
   const liveCents = $(live, '[data-live-cents]');
-  const liveBoard = renderFingerboard($(live, '[data-live-board]'), { showTapes: true });
-
   let stopListening = null;
 
   function paintLive(reading) {
@@ -133,9 +131,9 @@ export function render(container) {
       liveName.textContent = '—';
       liveName.className = 'bignote-name';
       liveName.style.fontSize = '3.2rem';
-      liveSub.textContent = 'Play anything and it will show up here.';
+      liveSub.textContent = 'Play anything — it lights up on the board below.';
       liveCents.textContent = '';
-      liveBoard.clear();
+      board.setLive(null);
       return;
     }
 
@@ -156,9 +154,9 @@ export function render(container) {
       : `<b>${formatCents(reading.cents)}</b> cents `
         + `${reading.cents < 0 ? 'flat of' : 'sharp of'} ${esc(reading.name)}`;
 
-    liveBoard.setLive({ midi: reading.midi, cents: reading.cents, tolerance });
-    if (fingering) liveBoard.setNotes([{ midi: reading.midi }]);
-    else liveBoard.setNotes([]);
+    // The live dot rides on its own layer, so a note you clicked stays marked
+    // underneath it — pick a target, then see how close you actually are.
+    board.setLive({ midi: reading.midi, cents: reading.cents, tolerance });
   }
 
   const gate = micGate(liveHost, { label: 'Turn on the microphone to see what you play' });
