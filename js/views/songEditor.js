@@ -142,9 +142,11 @@ export function render(container, { id, tab = 'type' }) {
     const resolved = resolveNotes(parsed.notes);
     const outOfRange = resolved.filter((n) => n.outOfRange);
 
-    const restCount = parsed.notes.filter(isRest).length;
-    countEl.textContent = parsed.notes.length
-      ? pluralise(parsed.notes.length - restCount, 'note')
+    // Counted after resolving, so a tied pair reads as the one note you play
+    // rather than the two you typed — matching what the staff below shows.
+    const restCount = resolved.filter(isRest).length;
+    countEl.textContent = resolved.length
+      ? pluralise(resolved.length - restCount, 'note')
         + (restCount ? `, ${pluralise(restCount, 'rest')}` : '')
       : 'Nothing yet';
 
@@ -304,21 +306,27 @@ function typePanel(panel, { textarea }) {
           <b>D4 q</b> — quarter note (the default)<br>
           <b>w h q e s</b> — whole, half, quarter, eighth, sixteenth<br>
           <b>q.</b> — dotted, so 1.5 beats<br>
+          <b>et qt ht st</b> — triplets: three in the time of two<br>
           <b>D4 1.5</b> — or just say how many beats<br>
           <b>rest q</b> — a rest (<b>r q</b> works too)<br>
           <b>(D4 q, E4 q)</b> — slur: one bow for both<br>
+          <b>F#4 q~, F#4 h</b> — tie: one held note, 3 beats<br>
           <b>|</b> — bar line, checked against the beats per bar<br>
           <b># Chorus</b> — start a named section<br>
           <b>// text</b> — a note to yourself
         </div>
         <p class="small muted" style="margin:1rem 0 0">Open strings are G3, D4, A4 and E5.
           Middle C is C4.</p>
+        <p class="small muted" style="margin:.6rem 0 0">A <b>slur</b> curves between
+          <i>different</i> notes and means one bow. A <b>tie</b> curves between
+          <i>the same</i> note twice and means one longer note — use it when a note
+          is held across a bar line.</p>
       </div>
     </div>
   `);
   panel.appendChild(box);
   $(box, '[data-host]').appendChild(textarea);
-  textarea.placeholder = '# Verse\nD4 q, E4 q, F#4 q, G4 q |\n(A4 h, F#4 h) |\nrest q, D4 q., E4 e |';
+  textarea.placeholder = '# Verse\nD4 q, E4 q, F#4 q, G4 q |\n(A4 h, F#4 h) |\nrest q, D4 q., E4 e |\nB4 et, A4 et, G4 et, F#4 q~ | F#4 h., rest q |';
   return () => {};
 }
 

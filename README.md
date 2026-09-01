@@ -73,13 +73,21 @@ the built-in songs. So does any new song you create.
 D4 q, E4 q, F#4 q, G4 q |   four quarter notes, then a bar line
 (A4 h, F#4 h) |             a slur — both notes in one bow stroke
 rest q, D4 q., E4 e |       a rest, a dotted quarter, an eighth
+B4 et, A4 et, G4 et |       a triplet — three eighths in one beat
+F#4 q~ | F#4 h, rest q |    a tie: one 3-beat F#4, held over the bar line
 A4 1.5                      or just say how many beats
 // anything after slashes is a comment
 ```
 
 Durations are `w h q e s` (whole, half, quarter, eighth, sixteenth); add `.` to
-dot one. Notes are `D4`, `F#4`, `Bb3`. Open strings are G3, D4, A4, E5; middle C
-is C4.
+dot one, or `t` to make it a triplet (`et qt ht st` — three in the time of two).
+Notes are `D4`, `F#4`, `Bb3`. Open strings are G3, D4, A4, E5; middle C is C4.
+
+A **slur** `( ... )` curves between *different* notes: one bow stroke, separate
+notes. A **tie** `~` joins *the same* note to the next one: one longer note, which
+is how a note held across a bar line is written. Ties are merged into a single
+sounded note before anything plays or scores it, so bar lines still add up while
+you type but a tied pair counts as one note to hit.
 
 Bar lines are checked against the time signature and warn if a bar does not add
 up. Notes outside first position are flagged, with a one-click octave shift when

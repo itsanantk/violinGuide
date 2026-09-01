@@ -5,6 +5,10 @@
 //   F#4 h           a half note
 //   rest q          a quarter rest  (also: r q)
 //   A4 1.5          an explicit duration in beats
+//   B4 et           a triplet eighth — add t to any duration for "three in the
+//                   time of two" (et, qt, ht, st)
+//   F#4 q~          tied into the next note: F#4 q~, F#4 w is one 5-beat F#4
+//   (D4 q, E4 q)    a slur — one bow stroke over both notes
 //   |               bar line — checked against the time signature, then dropped
 //   # Chorus        starts a new section
 //   // note to self a comment
@@ -23,6 +27,12 @@ export const DURATIONS = {
   e: 0.5,
   's.': 0.375,
   s: 0.25,
+  // Triplets: three in the time of two, so two thirds of the plain value.
+  wt: 8 / 3,
+  ht: 4 / 3,
+  qt: 2 / 3,
+  et: 1 / 3,
+  st: 1 / 6,
 };
 
 /** Longest name first so "h." matches before "h". */
@@ -49,6 +59,44 @@ export function isRest(note) {
   return note.rest === true;
 }
 
+function pitchOf(note) {
+  if (isRest(note)) return null;
+  return note.midi ?? midiFromName(note.note);
+}
+
+/**
+ * Collapse tied notes into one.
+ *
+ * A tie is a notation convenience — it exists because a duration cannot always
+ * be drawn as a single note head, especially across a bar line. To everything
+ * downstream (the player, the scorer, the staff, the bowing) a tied pair is one
+ * sounded note: one bow stroke, one pitch to hold, one thing to score. So it is
+ * merged here, once, rather than being special-cased in five places.
+ *
+ * Kept separate through parsing so bar lengths still add up.
+ */
+export function mergeTies(notes) {
+  const out = [];
+  for (const note of notes) {
+    const previous = out.at(-1);
+    const joinable = previous?.tie && !isRest(previous) && !isRest(note)
+      && pitchOf(previous) != null && pitchOf(previous) === pitchOf(note);
+
+    if (joinable) {
+      out[out.length - 1] = {
+        ...previous,
+        beats: previous.beats + note.beats,
+        tie: note.tie === true,
+      };
+      continue;
+    }
+    out.push(note);
+  }
+  // A tie that never joined anything is a warning at parse time, not a
+  // property of the note, so it does not travel any further.
+  return out.map(({ tie, ...note }) => note);
+}
+
 /**
  * Parse shorthand into notes.
  * Never throws — returns `{ notes, errors, warnings }` so the editor can show
@@ -56,6 +104,7 @@ export function isRest(note) {
  */
 export function parseNotation(text, { timeSignature = [4, 4] } = {}) {
   const notes = [];
+  const noteLines = [];
   const errors = [];
   const warnings = [];
 
@@ -132,6 +181,7 @@ export function parseNotation(text, { timeSignature = [4, 4] } = {}) {
       // A rest breaks a bow stroke rather than joining it.
       if (slurGroup !== null && !note.rest) note.slur = slurGroup;
       notes.push(note);
+      noteLines.push(lineIndex + 1);
       beatsInBar += note.beats;
 
       if (closesSlur) slurGroup = null;
@@ -141,6 +191,25 @@ export function parseNotation(text, { timeSignature = [4, 4] } = {}) {
   if (slurGroup !== null) {
     warnings.push({ line: lines.length, message: 'A slur was opened but never closed.' });
   }
+
+  // Ties are checked here rather than in the loop because a tie is about a
+  // pair, and the second half may be on the next line or past a bar line.
+  notes.forEach((note, i) => {
+    if (!note.tie) return;
+    const line = noteLines[i];
+    const next = notes[i + 1];
+    if (!next) {
+      warnings.push({ line, message: 'The last note is tied to nothing after it.' });
+    } else if (isRest(note) || isRest(next)) {
+      warnings.push({ line, message: 'A rest cannot be tied. Just write the two durations.' });
+    } else if (pitchOf(note) !== pitchOf(next)) {
+      warnings.push({
+        line,
+        message: `${note.note} is tied to ${next.note}. A tie joins two of the same note — `
+          + 'to bow different notes together use a slur: (D4 q, E4 q).',
+      });
+    }
+  });
 
   if (beatsInBar > 0 && Math.abs(beatsInBar - beatsPerBar) > 0.001 && notes.length) {
     warnings.push({
@@ -178,7 +247,12 @@ function tokenize(line) {
 }
 
 function parseToken(piece, line) {
-  const parts = piece.split(/\s+/);
+  // "F#4 q~" — the tie rides on the end of the token, whichever half it is
+  // written against, so "F#4~ q" and "F#4 q~" both mean the same thing.
+  const tie = piece.includes('~');
+  const rest = piece.replace(/~/g, ' ').trim();
+
+  const parts = rest.split(/\s+/);
   const head = parts[0];
   const tail = parts[1] ?? 'q';
 
@@ -188,13 +262,14 @@ function parseToken(piece, line) {
       error: {
         line,
         token: piece,
-        message: `"${tail}" is not a duration. Use w, h, q, e, s (add . to dot it) or a number of beats.`,
+        message: `"${tail}" is not a duration. Use w, h, q, e, s `
+          + `(add . to dot it, t to make it a triplet) or a number of beats.`,
       },
     };
   }
 
   if (REST_WORDS.has(head.toLowerCase())) {
-    return { note: { rest: true, beats } };
+    return { note: { rest: true, beats, ...(tie ? { tie: true } : {}) } };
   }
 
   const midi = midiFromName(head);
@@ -208,7 +283,7 @@ function parseToken(piece, line) {
     };
   }
 
-  return { note: { note: noteName(midi), midi, beats } };
+  return { note: { note: noteName(midi), midi, beats, ...(tie ? { tie: true } : {}) } };
 }
 
 /**
@@ -304,6 +379,7 @@ export function formatNotation(notes, { timeSignature = [4, 4], barsPerLine = 2 
     const nextSlur = i < list.length - 1 ? list[i + 1].slur ?? null : null;
 
     let token = `${isRest(note) ? 'rest' : note.note} ${durationName(note.beats)}`;
+    if (note.tie) token += '~';
     if (slur !== null && slur !== previousSlur) token = `(${token}`;
     if (slur !== null && slur !== nextSlur) token = `${token})`;
 
@@ -326,7 +402,7 @@ export function formatNotation(notes, { timeSignature = [4, 4], barsPerLine = 2 
  * that cannot be played in first position rather than drawing a wrong finger.
  */
 export function resolveNotes(notes) {
-  return withBowing(notes).map((note, index) => {
+  return withBowing(mergeTies(notes)).map((note, index) => {
     if (isRest(note)) return { ...note, index, rest: true };
     const midi = note.midi ?? midiFromName(note.note);
     const fingering = midi == null ? null : fingeringFor(midi);

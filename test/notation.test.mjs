@@ -2,7 +2,7 @@
 import {
   parseNotation, formatNotation, resolveNotes, withTimings,
   transpose, suggestOctaveShift, isRest, durationName,
-  withBowing, bowStrokes,
+  withBowing, bowStrokes, mergeTies,
 } from '../js/notation.js';
 import { SONGS, totalBeats } from '../js/data/songs.js';
 import { midiFromName } from '../js/theory.js';
@@ -269,6 +269,83 @@ console.log('\nCanon in D specifics');
   check('uses the G string', resolved.some((n) => n.fingering.string === 'G'));
   check('top note is F#5', Math.max(...resolved.map((n) => n.midi)) === midiFromName('F#5'));
   check('two sections', new Set(song.notes.map((n) => n.section)).size === 2);
+}
+
+console.log('\ntriplets');
+{
+  const { notes, warnings } = parseNotation('B4 qt, A4 qt, G4 qt, D4 h | D4 w');
+  check('triplet quarter is two thirds of a beat',
+    Math.abs(notes[0].beats - 2 / 3) < 1e-12, String(notes[0].beats));
+  check('three of them take the space of two beats',
+    warnings.length === 0, JSON.stringify(warnings));
+
+  const eighths = parseNotation('B4 et, A4 et, G4 et, D4 q, E4 q, F#4 q').notes;
+  check('triplet eighth is a third of a beat',
+    Math.abs(eighths[0].beats - 1 / 3) < 1e-12, String(eighths[0].beats));
+  check('a triplet bar still sums to four',
+    Math.abs(eighths.reduce((a, n) => a + n.beats, 0) - 4) < 1e-9);
+
+  check('all five triplet durations parse',
+    ['wt', 'ht', 'qt', 'et', 'st'].every((d) => parseNotation(`D4 ${d}`).errors.length === 0));
+  check('triplets round-trip through durationName',
+    durationName(2 / 3) === 'qt' && durationName(1 / 3) === 'et'
+      && durationName(4 / 3) === 'ht' && durationName(1 / 6) === 'st',
+    [durationName(2 / 3), durationName(1 / 3), durationName(4 / 3), durationName(1 / 6)].join());
+  check('plain durations are unchanged by the triplet names',
+    durationName(1) === 'q' && durationName(0.5) === 'e' && durationName(1.5) === 'q.'
+      && durationName(0.375) === 's.' && durationName(0.25) === 's');
+  check('a bad duration still errors', parseNotation('D4 tt').errors.length === 1);
+}
+
+console.log('\nties');
+{
+  const { notes, warnings } = parseNotation('F#4 q~, F#4 w');
+  check('the tie is kept on the first note', notes[0].tie === true);
+  check('both notes survive parsing', notes.length === 2);
+  check('bar maths still sees them apart',
+    warnings.some((w) => /5 beats/.test(w.message)), JSON.stringify(warnings));
+
+  const merged = mergeTies(notes);
+  check('merging leaves one note', merged.length === 1, String(merged.length));
+  check('durations add up', merged[0].beats === 5, String(merged[0].beats));
+  check('the tie flag does not travel', merged[0].tie === undefined);
+
+  const resolved = resolveNotes(parseNotation('F#4 q~ | F#4 w').notes);
+  check('resolveNotes merges across a bar line', resolved.length === 1, String(resolved.length));
+  check('a tied pair is one bow stroke', resolved[0].bow === 'down');
+  check('indices stay contiguous after a merge',
+    resolveNotes(parseNotation('D4 q, F#4 q~, F#4 q, A4 q').notes)
+      .map((n) => n.index).join() === '0,1,2');
+
+  const chain = resolveNotes(parseNotation('D4 q~, D4 q~, D4 q').notes);
+  check('a chain of ties merges whole', chain.length === 1 && chain[0].beats === 3,
+    `${chain.length} notes, ${chain[0].beats} beats`);
+
+  check('the tie survives formatNotation',
+    formatNotation(parseNotation('F#4 q~, F#4 h').notes).includes('F#4 q~'),
+    formatNotation(parseNotation('F#4 q~, F#4 h').notes));
+  check('format then parse then resolve is stable',
+    resolveNotes(parseNotation(formatNotation(parseNotation('F#4 q~, F#4 h').notes)).notes)
+      .length === 1);
+
+  check('a tie between different notes warns',
+    parseNotation('F#4 q~, G4 q').warnings.some((w) => /tied to/.test(w.message)));
+  check('different notes are not merged',
+    mergeTies(parseNotation('F#4 q~, G4 q').notes).length === 2);
+  check('a dangling tie warns',
+    parseNotation('F#4 q~').warnings.some((w) => /tied to nothing/.test(w.message)));
+  check('a tied rest warns',
+    parseNotation('rest q~, rest q').warnings.some((w) => /rest cannot be tied/.test(w.message)));
+  check('a tie inside a slur keeps the slur',
+    resolveNotes(parseNotation('(D4 q, F#4 q~, F#4 q)').notes).every((n) => n.slurred));
+  check('a slurred tie is still one stroke',
+    new Set(resolveNotes(parseNotation('(D4 q, F#4 q~, F#4 q)').notes)
+      .map((n) => n.strokeIndex)).size === 1);
+  check('tie on the note head parses the same', parseNotation('F#4~ q').notes[0].tie === true);
+  check('untied notes carry no tie flag',
+    parseNotation('D4 q, E4 q').notes.every((n) => n.tie === undefined));
+  check('ties and triplets compose',
+    resolveNotes(parseNotation('B4 et~, B4 et, A4 et').notes).length === 2);
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
